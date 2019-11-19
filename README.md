@@ -1,2 +1,2 @@
-# CS536Lab6
+# CS536 Lab6
 CS536 Lab6
