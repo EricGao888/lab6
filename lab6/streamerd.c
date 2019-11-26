@@ -272,7 +272,9 @@ int main(int argc, char *argv[]) {
 
                     sigprocmask(SIG_UNBLOCK, &set, NULL);
 
-                    printf("%u %f\n", seq_num, cur_lambda);
+                    //printf("%u %f\n", seq_num, cur_lambda);
+
+                    save_log(cur_lambda);
 
                     if (cur_lambda < 1) {
                         req.tv_sec = 1;

@@ -49,7 +49,7 @@ static void * producer(void *arg) {
         *(int *)(send_buf + 4) = target_buf;
         *(int *)(send_buf + 8) = gamma;
 
-
+        printf("%d\n", cq -> size);
         memset((void *) &dst_udp_addr, 0, sizeof(dst_udp_addr));
         dst_udp_addr.sin_family = AF_INET;
         dst_udp_addr.sin_addr = server_ip;
@@ -73,7 +73,7 @@ static void * producer(void *arg) {
 }
 
 
-static void sigint_handler(int sig) {
+static void sigquit_handler(int sig) {
     printf("handler\n");
     fflush(stdout);
     done = 1;
@@ -225,9 +225,9 @@ int main(int argc, char *argv[]) {
         close(client_tcp_fd);
 
         memset((void *) &act, 0, sizeof(act));
-        act.sa_handler = sigint_handler;
+        act.sa_handler = sigquit_handler;
 
-        sigaction(SIGINT, (const struct sigaction *) &act, NULL);
+        sigaction(SIGQUIT, (const struct sigaction *) &act, NULL);
 
         cq = allocate(buf_size);
         done = 0;
@@ -266,13 +266,13 @@ int main(int argc, char *argv[]) {
             }
 
             sigemptyset(&set);
-            sigaddset(&set, SIGINT);
+            sigaddset(&set, SIGQUIT);
             sigprocmask(SIG_BLOCK, &set, NULL);
 
             pthread_mutex_lock(&lock);
 
             if (cq -> size >= mulaw_size) {
-                //printf("%d\n", cq -> size);
+                printf("%d\n", cq -> size);
                 for (i = 0; i < mulaw_size; i++) {
                     if (dequeue(cq, mulaw_buf + i) == -1) {
                         fprintf(stderr, "cannot dequeue\n");
@@ -310,7 +310,7 @@ int main(int argc, char *argv[]) {
         if (recv_len >= 1 && recv_len <= 5 && recv_buf[0] == '5') {
             printf("kill\n");
             fflush(stdout);
-            kill(worker_pid, SIGINT);
+            kill(worker_pid, SIGQUIT);
         }
 
         close(client_tcp_fd);
