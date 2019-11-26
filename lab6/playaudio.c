@@ -64,8 +64,11 @@ static void * producer(void *arg) {
 
         pthread_mutex_lock(&lock);
         for (i = 4; i < recv_len; i++) {
-            if (enqueue(cq, recv_buf[i]) == -1)
+            if (enqueue(cq, recv_buf[i]) == -1) {
+                fprintf(stderr, "cannot enqueue\n");
+                fflush(stderr);
                 break;
+            }
         }
         pthread_mutex_unlock(&lock);
     }
@@ -153,14 +156,24 @@ int main(int argc, char *argv[]) {
     client_tcp_addr.sin_family = AF_INET;
     client_tcp_addr.sin_addr.s_addr = INADDR_ANY;
     client_tcp_addr.sin_port = 0;
-    bind(client_tcp_fd, (const struct sockaddr *) &client_tcp_addr, sizeof(client_tcp_addr));
+    if (bind(client_tcp_fd, (const struct sockaddr *) &client_tcp_addr, sizeof(client_tcp_addr)) == -1) {
+        perror("bind()");
+        fflush(stderr);
+        close(client_tcp_fd);
+        exit(EXIT_FAILURE);
+    }
 
     memset((void *) &server_tcp_addr, 0, sizeof(server_tcp_addr));
     server_tcp_addr.sin_family = AF_INET;
     server_tcp_addr.sin_addr = server_ip;
     server_tcp_addr.sin_port = server_tcp_port;
 
-    connect(client_tcp_fd, (const struct sockaddr *) &server_tcp_addr, sizeof(server_tcp_addr));
+    if (connect(client_tcp_fd, (const struct sockaddr *) &server_tcp_addr, sizeof(server_tcp_addr)) == -1) {
+        perror("connect()");
+        fflush(stderr);
+        close(client_tcp_fd);
+        exit(EXIT_FAILURE);
+    }
 
     send_len = strlen(audiofile);
     memcpy(send_buf, audiofile, send_len);
@@ -298,7 +311,7 @@ int main(int argc, char *argv[]) {
     } else {
         close(client_udp_fd);
         recv_len = read(client_tcp_fd, (void *) recv_buf, MAX_BUF_SIZE);
-        printf("%d\n", recv_len);
+        printf("%ld\n", recv_len);
 
         if (recv_len >= 1 && recv_len <= 5 && recv_buf[0] == '5') {
             printf("kill\n");

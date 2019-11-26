@@ -1,7 +1,7 @@
 target: streamerd playaudio
 
 streamerd: streamerd.o
-	gcc -o streamerd streamerd.o
+	gcc -o streamerd streamerd.o -lm
 
 playaudio: playaudio.o queue.o mulaw.o
 	gcc -o playaudio playaudio.o queue.o mulaw.o -pthread -lasound

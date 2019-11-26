@@ -2,7 +2,8 @@
 
 
 int server_udp_fd;
-unsigned int lambda, mode;
+unsigned int mode;
+float lambda;
 float a, delta, epsilon, beta;
 
 
@@ -65,7 +66,7 @@ void sigio_handler(int sig) {
                 lambda = delta * lambda;
         } else if (mode == 2) {
             lambda = lambda + epsilon * (target_buf - buf_size);
-        } else if( mode == 3) {
+        } else if (mode == 3) {
             lambda = lambda + epsilon * (target_buf - buf_size) - beta * (lambda - gamma);
         }
     }
@@ -86,6 +87,7 @@ int main(int argc, char *argv[]) {
     in_port_t client_udp_port;
 
     unsigned char send_buf[MAX_BUF_SIZE];
+    size_t send_len;
     unsigned char recv_buf[MAX_BUF_SIZE];
     ssize_t recv_len;
 
@@ -104,6 +106,9 @@ int main(int argc, char *argv[]) {
     struct timespec req, rem;
     struct sockaddr_in client_udp_addr;
     int sleep_ret;
+
+    sigset_t set;
+    float cur_lambda;
 
 
     if (argc != 6) {
@@ -138,7 +143,12 @@ int main(int argc, char *argv[]) {
     server_tcp_addr.sin_family = AF_INET;
     server_tcp_addr.sin_addr.s_addr = INADDR_ANY;
     server_tcp_addr.sin_port = server_tcp_port;
-    bind(listen_tcp_fd, (const struct sockaddr *) &server_tcp_addr, sizeof(server_tcp_addr));
+    if (bind(listen_tcp_fd, (const struct sockaddr *) &server_tcp_addr, sizeof(server_tcp_addr)) == -1) {
+        perror("bind()");
+        fflush(stderr);
+        close(listen_tcp_fd);
+        exit(EXIT_FAILURE);
+    }
 
     listen(listen_tcp_fd, MAX_LISTEN);
 
@@ -146,6 +156,13 @@ int main(int argc, char *argv[]) {
         memset((void *) &client_tcp_addr, 0, sizeof(client_tcp_addr));
         client_tcp_addr_len = sizeof(client_tcp_addr);
         server_tcp_fd = accept(listen_tcp_fd, (struct sockaddr *) &client_tcp_addr, &client_tcp_addr_len);
+
+        if (server_tcp_fd == -1) {
+            perror("accept()");
+            fflush(stderr);
+            close(listen_tcp_fd);
+            exit(EXIT_FAILURE);
+        }
 
         worker_pid = fork();
 
@@ -253,16 +270,23 @@ int main(int argc, char *argv[]) {
                 client_udp_addr.sin_addr.s_addr = client_tcp_addr.sin_addr.s_addr;
                 client_udp_addr.sin_port = client_udp_port;
 
-                while ((recv_len = read(audiofile_fd, (void *) send_buf + 4, payload_size)) > 0) {
-                    for (i = 0; i < 4; i++)
-                        send_buf[i] = (seq_num >> (i * 8)) & 0xFF;
+                while (1) {
+                    sigemptyset(&set);
+                    sigaddset(&set, SIGIO);
+                    sigprocmask(SIG_BLOCK, &set, NULL);
 
-                    if (lambda == 1) {
+                    cur_lambda = lambda;
+
+                    sigprocmask(SIG_UNBLOCK, &set, NULL);
+
+                    printf("%u %f\n", seq_num, cur_lambda);
+
+                    if (cur_lambda < 0.1) {
                         req.tv_sec = 1;
                         req.tv_nsec = 0;
                     } else {
-                        req.tv_sec = 0;
-                        req.tv_nsec = 1000000000 / lambda;
+                        req.tv_sec = floor(1 / cur_lambda);
+                        req.tv_nsec = floor(1e9 / cur_lambda - req.tv_sec * 1e9);
                     }
 
                     sleep_ret = nanosleep((const struct timespec *) &req, &rem);
@@ -279,12 +303,25 @@ int main(int argc, char *argv[]) {
                         }
                     }
 
-                    sendto(server_udp_fd, (const void *) send_buf, 4 + recv_len, 0,
+                    for (i = 0; i < 4; i++)
+                        send_buf[i] = (seq_num >> (i * 8)) & 0xFF;
+
+                    send_len = 4;
+
+                    if (cur_lambda >= 0.1) {
+                        recv_len = read(audiofile_fd, (void *) send_buf + 4, payload_size);
+                        if (recv_len == -1 || recv_len == 0)
+                            break;
+                        send_len += recv_len;
+                    }
+
+                    sendto(server_udp_fd, (const void *) send_buf, send_len, 0,
                            (const struct sockaddr *) &client_udp_addr, sizeof(client_udp_addr));
 
                     seq_num++;
                 }
 
+                fflush(stdout);
                 close(server_udp_fd);
                 return 0;
             } else {
@@ -292,7 +329,6 @@ int main(int argc, char *argv[]) {
 
                 while (1) {
                     if (wait(NULL) == udp_pid) {
-                        printf("%d\n", udp_pid);
                         fflush(stdout);
                         send_buf[0] = '5';
                         for (i = 0; i < 5; i++)
