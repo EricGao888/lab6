@@ -7,12 +7,12 @@
 
 struct circular_queue {
     unsigned char *buf;
-    size_t capacity, size;
-    size_t head, tail;
+    int capacity, size;
+    int head, tail;
 };
 
 
-struct circular_queue * allocate(size_t);
+struct circular_queue * allocate(int);
 
 void destroy(struct circular_queue *);
 

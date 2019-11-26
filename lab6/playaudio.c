@@ -59,6 +59,8 @@ static void * producer(void *arg) {
         dst_udp_addr.sin_addr = server_ip;
         dst_udp_addr.sin_port = server_udp_port;
 
+        //printf("%d %d %f\n", cq -> size, target_buf, gamma);
+
         sendto(client_udp_fd, (void *) send_buf, 12, 0,
                (const struct sockaddr *) &dst_udp_addr, sizeof(dst_udp_addr));
 
@@ -279,6 +281,7 @@ int main(int argc, char *argv[]) {
             pthread_mutex_lock(&lock);
 
             if (cq -> size >= mulaw_size) {
+                //printf("%d\n", cq -> size);
                 for (i = 0; i < mulaw_size; i++) {
                     if (dequeue(cq, mulaw_buf + i) == -1) {
                         fprintf(stderr, "cannot dequeue\n");

@@ -3,7 +3,7 @@
 
 int server_udp_fd;
 unsigned int mode;
-unsigned int payload_size;
+int payload_size;
 float lambda;
 float a, delta, epsilon, beta;
 
@@ -281,7 +281,7 @@ int main(int argc, char *argv[]) {
 
                     sigprocmask(SIG_UNBLOCK, &set, NULL);
 
-                    printf("%u %f\n", seq_num, cur_lambda);
+                    //printf("%u %f\n", seq_num, cur_lambda);
 
                     if (cur_lambda < 1) {
                         req.tv_sec = 1;
