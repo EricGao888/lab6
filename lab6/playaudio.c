@@ -27,7 +27,7 @@ static void * producer(void *arg) {
         src_udp_addr_len = sizeof(src_udp_addr);
 
         recv_len = recvfrom(client_udp_fd, (void *) recv_buf, MAX_BUF_SIZE, 0,
-                            (struct sockaddr *) &src_udp_addr, &src_udp_addr_len);
+                (struct sockaddr *) &src_udp_addr, &src_udp_addr_len);
 
         if (recv_len == -1) {
             if (errno != EINTR) {
@@ -42,24 +42,18 @@ static void * producer(void *arg) {
 
         pthread_mutex_lock(&lock);
 
-        for (i = 0; i < 4; i++)
-            send_buf[i] = ((cq -> size) >> (i * 8)) & 0xFF;
+        *(int *)(send_buf) = cq -> size;
 
         pthread_mutex_unlock(&lock);
 
-        for (i = 0; i < 4; i++)
-            send_buf[i + 4] = (target_buf >> (i * 8)) & 0xFF;
-
-        for (i = 0; i < 4; i++)
-            send_buf[i + 8] = (gamma >> (i * 8)) & 0xFF;
+        *(int *)(send_buf + 4) = target_buf;
+        *(int *)(send_buf + 8) = gamma;
 
 
         memset((void *) &dst_udp_addr, 0, sizeof(dst_udp_addr));
         dst_udp_addr.sin_family = AF_INET;
         dst_udp_addr.sin_addr = server_ip;
         dst_udp_addr.sin_port = server_udp_port;
-
-        //printf("%d %d %f\n", cq -> size, target_buf, gamma);
 
         sendto(client_udp_fd, (void *) send_buf, 12, 0,
                (const struct sockaddr *) &dst_udp_addr, sizeof(dst_udp_addr));
@@ -98,7 +92,7 @@ int main(int argc, char *argv[]) {
     ssize_t recv_len;
 
     char audiofile[MAX_PATH_SIZE];
-    int filesize;
+    //int filesize;
 
 
     struct sockaddr_in client_udp_addr;
@@ -200,11 +194,9 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-    if (recv_len == 7 && recv_buf[0] == '2') {
-        server_udp_port = recv_buf[1] + (recv_buf[2] << 8);
-        filesize = 0;
-        for (i = 0; i < 4; i++)
-            filesize += recv_buf[i + 3] << (i * 8);
+    if (recv_len == 1 + sizeof(in_port_t) + sizeof(int) && recv_buf[0] == '2') {
+        server_udp_port = *(in_port_t *)(recv_buf + 1);
+        //filesize = *(int *)(recv_buf + 1 + sizeof(in_port_t));
     } else {
         fprintf(stdout, "received unknown messages from the server\n");
         fflush(stdout);
@@ -223,8 +215,7 @@ int main(int argc, char *argv[]) {
     getsockname(client_udp_fd, (struct sockaddr *) &client_udp_addr, &client_udp_addr_len);
     client_udp_port = client_udp_addr.sin_port;
 
-    send_buf[0] = client_udp_port & 0xFF;
-    send_buf[1] = (client_udp_port >> 8) & 0xFF;
+    *(in_port_t *)(send_buf) = client_udp_port;
 
     write(client_tcp_fd, (const void *) send_buf, 2);
 

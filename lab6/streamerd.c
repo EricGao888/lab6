@@ -21,7 +21,6 @@ int get_filesize(const char *pathname) {
 
 
 void sigio_handler(int sig) {
-    int i;
     struct sockaddr_in client_udp_addr;
     socklen_t client_udp_addr_len;
 
@@ -43,17 +42,11 @@ void sigio_handler(int sig) {
         if (recv_len != 12)
             continue;
 
-        buf_occupancy = 0;
-        for (i = 0; i < 4; i++)
-            buf_occupancy += recv_buf[i] << (i * 8);
+        buf_occupancy = *(int *)(recv_buf);
+        target_buf = *(int *)(recv_buf + 4);
+        gamma = *(int *)(recv_buf + 8);
 
-        target_buf = 0;
-        for (i = 0; i < 4; i++)
-            target_buf += recv_buf[i + 4] << (i * 8);
-
-        gamma = 0;
-        for (i = 0; i < 4; i++)
-            gamma += recv_buf[i + 8] << (i * 8);
+        //printf("%d %d %f\n", buf_occupancy, target_buf, gamma);
 
         if (mode == 0) {
             if (buf_occupancy < target_buf)
@@ -215,12 +208,10 @@ int main(int argc, char *argv[]) {
             getsockname(server_udp_fd, (struct sockaddr *) &server_udp_addr, &server_udp_addr_len);
 
             send_buf[0] = '2';
-            send_buf[1] = server_udp_addr.sin_port & 0xFF;
-            send_buf[2] = (server_udp_addr.sin_port >> 8) & 0xFF;
-            for (i = 0; i < 4; i++)
-                send_buf[i + 3] = (filesize >> (i * 8)) & 0xFF;
+            *(in_port_t *)(send_buf + 1) = server_udp_addr.sin_port;
+            *(int *)(send_buf + 1 + sizeof(in_port_t)) = filesize;
 
-            write(server_tcp_fd, (const void *) send_buf, 7);
+            write(server_tcp_fd, (const void *) send_buf, 1 + sizeof(in_port_t) + sizeof(int));
 
             recv_len = read(server_tcp_fd, (void *) recv_buf, MAX_BUF_SIZE);
 
@@ -233,7 +224,7 @@ int main(int argc, char *argv[]) {
                 exit(EXIT_FAILURE);
             }
 
-            client_udp_port = recv_buf[0] + (recv_buf[1] << 8);
+            client_udp_port = *(in_port_t *)(recv_buf);
 
             udp_pid = fork();
 
@@ -281,7 +272,7 @@ int main(int argc, char *argv[]) {
 
                     sigprocmask(SIG_UNBLOCK, &set, NULL);
 
-                    //printf("%u %f\n", seq_num, cur_lambda);
+                    printf("%u %f\n", seq_num, cur_lambda);
 
                     if (cur_lambda < 1) {
                         req.tv_sec = 1;
@@ -305,8 +296,7 @@ int main(int argc, char *argv[]) {
                         }
                     }
 
-                    for (i = 0; i < 4; i++)
-                        send_buf[i] = (seq_num >> (i * 8)) & 0xFF;
+                    *(unsigned int *)(send_buf) = seq_num;
 
                     send_len = 4;
 
