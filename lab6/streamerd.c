@@ -3,6 +3,7 @@
 
 int server_udp_fd;
 unsigned int mode;
+unsigned int payload_size;
 float lambda;
 float a, delta, epsilon, beta;
 
@@ -27,7 +28,7 @@ void sigio_handler(int sig) {
     unsigned char recv_buf[MAX_BUF_SIZE];
     ssize_t recv_len;
 
-    unsigned int buf_size, target_buf, gamma;
+    int buf_occupancy, target_buf, gamma;
 
     while (1) {
         memset((void *) &client_udp_addr, 0, sizeof(client_udp_addr));
@@ -42,32 +43,33 @@ void sigio_handler(int sig) {
         if (recv_len != 12)
             continue;
 
-        buf_size = 0;
+        buf_occupancy = 0;
         for (i = 0; i < 4; i++)
-            buf_size += (recv_buf[i] << 8);
+            buf_occupancy += recv_buf[i] << (i * 8);
 
         target_buf = 0;
         for (i = 0; i < 4; i++)
-            target_buf += (recv_buf[i + 4] << 8);
+            target_buf += recv_buf[i + 4] << (i * 8);
 
         gamma = 0;
         for (i = 0; i < 4; i++)
-            gamma += (recv_buf[i + 8] << 8);
+            gamma += recv_buf[i + 8] << (i * 8);
 
         if (mode == 0) {
-            if (buf_size < target_buf)
+            if (buf_occupancy < target_buf)
                 lambda = lambda + a;
-            else if (buf_size > target_buf)
+            else if (buf_occupancy > target_buf)
                 lambda = lambda - a;
         } else if (mode == 1) {
-            if (buf_size < target_buf)
+            if (buf_occupancy < target_buf)
                 lambda = lambda + a;
-            else if (buf_size > target_buf)
+            else if (buf_occupancy > target_buf)
                 lambda = delta * lambda;
         } else if (mode == 2) {
-            lambda = lambda + epsilon * (target_buf - buf_size);
+            lambda = lambda + epsilon * (target_buf - buf_occupancy);
         } else if (mode == 3) {
-            lambda = lambda + epsilon * (target_buf - buf_size) - beta * (lambda - gamma);
+            lambda = lambda + epsilon * (target_buf - buf_occupancy)
+                            - beta * (lambda - 1.0 * gamma * payload_size / 4096);
         }
     }
 }
@@ -97,7 +99,7 @@ int main(int argc, char *argv[]) {
 
     int udp_pid;
 
-    unsigned int payload_size, init_lambda;
+    float init_lambda;
     char logfile1[MAX_PATH_SIZE];
 
     FILE *fp;
@@ -126,7 +128,7 @@ int main(int argc, char *argv[]) {
 
     payload_size = atoi(argv[2]);
 
-    init_lambda = atoi(argv[3]);
+    init_lambda = atof(argv[3]);
 
     mode = atoi(argv[4]);
     if (mode < 0 || mode > 3) {
@@ -281,7 +283,7 @@ int main(int argc, char *argv[]) {
 
                     printf("%u %f\n", seq_num, cur_lambda);
 
-                    if (cur_lambda < 0.1) {
+                    if (cur_lambda < 1) {
                         req.tv_sec = 1;
                         req.tv_nsec = 0;
                     } else {
@@ -308,7 +310,7 @@ int main(int argc, char *argv[]) {
 
                     send_len = 4;
 
-                    if (cur_lambda >= 0.1) {
+                    if (cur_lambda >= 1) {
                         recv_len = read(audiofile_fd, (void *) send_buf + 4, payload_size);
                         if (recv_len == -1 || recv_len == 0)
                             break;

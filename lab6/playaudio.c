@@ -7,7 +7,7 @@ static struct circular_queue *cq;
 static int client_udp_fd;
 struct in_addr server_ip;
 static in_port_t server_udp_port;
-static unsigned int gamma, target_buf;
+static int gamma, target_buf;
 static pthread_mutex_t lock;
 static int done;
 
@@ -106,7 +106,7 @@ int main(int argc, char *argv[]) {
     int worker_pid;
     struct sigaction act;
 
-    unsigned int buf_size;
+    ssize_t buf_size;
 
     pthread_t producer_tid;
 
