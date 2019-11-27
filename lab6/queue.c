@@ -1,7 +1,7 @@
 #include "queue.h"
 
 
-struct circular_queue * allocate(int capacity) {
+struct circular_queue * queue_alloc(int capacity) {
     struct circular_queue *cq;
     cq = malloc(sizeof(struct circular_queue));
     cq -> buf = malloc(capacity * sizeof(unsigned char));
@@ -12,7 +12,7 @@ struct circular_queue * allocate(int capacity) {
 }
 
 
-void destroy(struct circular_queue * cq) {
+void queue_destroy(struct circular_queue * cq) {
     if (cq == NULL)
         return;
     free(cq -> buf);

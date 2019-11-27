@@ -1,6 +1,7 @@
 #include "playaudio.h"
 #include "queue.h"
 #include "mulaw.h"
+#include "logger.h"
 
 
 static struct circular_queue *cq;
@@ -10,6 +11,8 @@ static in_port_t server_udp_port;
 static int gamma, target_buf;
 static pthread_mutex_t lock;
 static int done;
+
+static logger_ptr log;
 
 
 static void * producer(void *arg) {
@@ -43,13 +46,13 @@ static void * producer(void *arg) {
         pthread_mutex_lock(&lock);
 
         *(int *)(send_buf) = cq -> size;
+        logger_log(log, (void *) &(cq -> size), sizeof(ull));
 
         pthread_mutex_unlock(&lock);
 
         *(int *)(send_buf + 4) = target_buf;
         *(int *)(send_buf + 8) = gamma;
 
-        printf("%d\n", cq -> size);
         memset((void *) &dst_udp_addr, 0, sizeof(dst_udp_addr));
         dst_udp_addr.sin_family = AF_INET;
         dst_udp_addr.sin_addr = server_ip;
@@ -74,9 +77,32 @@ static void * producer(void *arg) {
 
 
 static void sigquit_handler(int sig) {
-    printf("handler\n");
-    fflush(stdout);
     done = 1;
+}
+
+
+static struct in_addr get_local_ip() {
+    char name[50];
+    struct addrinfo *result;
+
+    if (gethostname(name, sizeof(name))) {
+        perror("gethostname(): invalid hostname");
+        fflush(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+    if (getaddrinfo(name, NULL, NULL, &result)) {
+        perror("getaddrinfo(): invalid hostname");
+        fflush(stderr);
+        exit(EXIT_FAILURE);
+    }
+
+    return ((struct sockaddr_in *) result -> ai_addr) -> sin_addr;
+}
+
+
+static void sprint_int(char *log_buf, void *data) {
+    sprintf(log_buf, "%d", *(int *)(data));
 }
 
 
@@ -114,7 +140,7 @@ int main(int argc, char *argv[]) {
     size_t mulaw_size;
     unsigned char *mulaw_buf;
 
-    char logfile2[MAX_PATH_SIZE];
+    FILE *fp;
 
     if (argc != 9) {
         fprintf(stderr, "usage: %s <tcp-ip> <tcp-port> <audiofile> <block-size> <gamma> <buf-size> <target-buf> "
@@ -143,7 +169,7 @@ int main(int argc, char *argv[]) {
     buf_size = atoi(argv[6]);
     target_buf = atoi(argv[7]);
 
-    strncpy(logfile2, argv[8], MAX_PATH_SIZE);
+    fp = fopen(argv[8], "w");
 
 
     client_tcp_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -229,8 +255,10 @@ int main(int argc, char *argv[]) {
 
         sigaction(SIGQUIT, (const struct sigaction *) &act, NULL);
 
-        cq = allocate(buf_size);
+        cq = queue_alloc(buf_size);
         done = 0;
+
+        log = logger_alloc();
 
         if (pthread_create(&producer_tid, NULL, &producer, NULL) != 0) {
             perror("pthread_create()");
@@ -272,7 +300,7 @@ int main(int argc, char *argv[]) {
             pthread_mutex_lock(&lock);
 
             if (cq -> size >= mulaw_size) {
-                printf("%d\n", cq -> size);
+                logger_log(log, (void *) &(cq -> size), sizeof(ull));
                 for (i = 0; i < mulaw_size; i++) {
                     if (dequeue(cq, mulaw_buf + i) == -1) {
                         fprintf(stderr, "cannot dequeue\n");
@@ -284,8 +312,6 @@ int main(int argc, char *argv[]) {
                 mulawwrite(mulaw_buf);
             } else {
                 if (done == 1) {
-                    printf("done\n");
-                    fflush(stdout);
                     pthread_mutex_unlock(&lock);
                     sigprocmask(SIG_UNBLOCK, &set, NULL);
                     break;
@@ -300,16 +326,16 @@ int main(int argc, char *argv[]) {
         mulawclose();
         free(mulaw_buf);
 
-        destroy(cq);
+        queue_destroy(cq);
+
+        logger_write(log, fp, get_local_ip(), client_udp_port, sprint_int);
+        logger_destroy(log);
 
     } else {
         close(client_udp_fd);
         recv_len = read(client_tcp_fd, (void *) recv_buf, MAX_BUF_SIZE);
-        printf("%ld\n", recv_len);
 
         if (recv_len >= 1 && recv_len <= 5 && recv_buf[0] == '5') {
-            printf("kill\n");
-            fflush(stdout);
             kill(worker_pid, SIGQUIT);
         }
 
@@ -317,5 +343,6 @@ int main(int argc, char *argv[]) {
         wait(NULL);
     }
 
+    fclose(fp);
     return 0;
 }

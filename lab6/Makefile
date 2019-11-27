@@ -1,10 +1,10 @@
 target: streamerd playaudio
 
-streamerd: streamerd.o
-	gcc -o streamerd streamerd.o -lm
+streamerd: streamerd.o logger.o
+	gcc -o streamerd streamerd.o logger.o -lm
 
-playaudio: playaudio.o queue.o mulaw.o
-	gcc -o playaudio playaudio.o queue.o mulaw.o -pthread -lasound
+playaudio: playaudio.o queue.o mulaw.o logger.o
+	gcc -o playaudio playaudio.o queue.o mulaw.o logger.o -pthread -lasound
 
 streamerd.o: streamerd.c streamerd.h
 	gcc -Wall -c streamerd.c
@@ -17,6 +17,9 @@ queue.o: queue.c queue.h
 
 mulaw.o: mulaw.c mulaw.h
 	gcc -Wall -c mulaw.c
+
+logger.o: logger.c logger.h
+	gcc -Wall -c logger.c
 
 clean:
 	rm -f streamerd playaudio

@@ -1,4 +1,5 @@
 #include "streamerd.h"
+#include "logger.h"
 
 
 int server_udp_fd;
@@ -8,7 +9,7 @@ float lambda;
 float a, delta, epsilon, beta;
 
 
-int get_filesize(const char *pathname) {
+static int get_filesize(const char *pathname) {
     struct stat st;
     if (stat(pathname, &st) == -1) {
         perror("stat()");
@@ -20,7 +21,7 @@ int get_filesize(const char *pathname) {
 }
 
 
-void sigio_handler(int sig) {
+static void sigio_handler(int sig) {
     struct sockaddr_in client_udp_addr;
     socklen_t client_udp_addr_len;
 
@@ -68,6 +69,11 @@ void sigio_handler(int sig) {
 }
 
 
+static void sprint_float(char *log_buf, void *data) {
+    sprintf(log_buf, "%.6f", *(float *)(data));
+}
+
+
 int main(int argc, char *argv[]) {
     int i;
 
@@ -93,9 +99,6 @@ int main(int argc, char *argv[]) {
     int udp_pid;
 
     float init_lambda;
-    char logfile1[MAX_PATH_SIZE];
-
-    FILE *fp;
 
     unsigned int seq_num;
     struct timespec req, rem;
@@ -103,7 +106,12 @@ int main(int argc, char *argv[]) {
     int sleep_ret;
 
     sigset_t set;
+
+    logger_ptr log;
+    FILE *control_param_fp, *log_fp;
+
     float cur_lambda;
+
 
 
     if (argc != 6) {
@@ -130,7 +138,7 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    strncpy(logfile1, argv[5], MAX_PATH_SIZE);
+    log_fp = fopen(argv[5], "a");
 
     listen_tcp_fd = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -244,16 +252,16 @@ int main(int argc, char *argv[]) {
                     exit(EXIT_FAILURE);
                 }
 
-                fp = fopen("control-param.dat", "r");
-                if (fp == NULL) {
+                control_param_fp = fopen("control-param.dat", "r");
+                if (control_param_fp == NULL) {
                     fprintf(stderr, "cannot open control file control-param.dat\n");
                     fflush(stderr);
                     close(server_udp_fd);
                     exit(EXIT_FAILURE);
                 }
 
-                fscanf(fp, "%f%f%f%f", &a, &delta, &epsilon, &beta);
-                fclose(fp);
+                fscanf(control_param_fp, "%f%f%f%f", &a, &delta, &epsilon, &beta);
+                fclose(control_param_fp);
 
                 lambda = init_lambda;
                 seq_num = 0;
@@ -263,6 +271,8 @@ int main(int argc, char *argv[]) {
                 client_udp_addr.sin_addr.s_addr = client_tcp_addr.sin_addr.s_addr;
                 client_udp_addr.sin_port = client_udp_port;
 
+                log = logger_alloc();
+
                 while (1) {
                     sigemptyset(&set);
                     sigaddset(&set, SIGIO);
@@ -271,10 +281,6 @@ int main(int argc, char *argv[]) {
                     cur_lambda = lambda;
 
                     sigprocmask(SIG_UNBLOCK, &set, NULL);
-
-                    //printf("%u %f\n", seq_num, cur_lambda);
-
-                    save_log(cur_lambda);
 
                     if (cur_lambda < 1) {
                         req.tv_sec = 1;
@@ -309,16 +315,26 @@ int main(int argc, char *argv[]) {
                         send_len += recv_len;
                     }
 
+                    logger_log(log, (void *) &cur_lambda, sizeof(float));
+
                     sendto(server_udp_fd, (const void *) send_buf, send_len, 0,
                            (const struct sockaddr *) &client_udp_addr, sizeof(client_udp_addr));
 
                     seq_num++;
                 }
 
-                fflush(stdout);
                 close(server_udp_fd);
+
+                logger_write(log, log_fp, client_udp_addr.sin_addr, client_udp_port, sprint_float);
+                logger_destroy(log);
+
+                fclose(log_fp);
+
+                fprintf(stdout, "%s:%hu done\n", inet_ntoa(client_udp_addr.sin_addr), ntohs(client_udp_port));
+                fflush(stdout);
                 return 0;
             } else {
+                fclose(log_fp);
                 close(server_udp_fd);
 
                 while (1) {
@@ -337,7 +353,8 @@ int main(int argc, char *argv[]) {
         } else {
             close(server_tcp_fd);
         }
-
     }
+
+    fclose(log_fp);
     return 0;
 }

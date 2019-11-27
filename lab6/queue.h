@@ -12,9 +12,9 @@ struct circular_queue {
 };
 
 
-struct circular_queue * allocate(int);
+struct circular_queue * queue_alloc(int);
 
-void destroy(struct circular_queue *);
+void queue_destroy(struct circular_queue *);
 
 int enqueue(struct circular_queue *, unsigned char);
 
