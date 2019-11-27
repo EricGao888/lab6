@@ -184,6 +184,7 @@ int main(int argc, char *argv[]) {
 
             strcpy(pathname, "/tmp/");
             memcpy(pathname + 5, recv_buf, recv_len * sizeof(char));
+            pathname[recv_len + 5] = 0;
 
             audiofile_fd = open((const char *) pathname, O_RDONLY);
 
